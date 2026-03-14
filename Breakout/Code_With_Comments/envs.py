@@ -1,20 +1,15 @@
 # Improvement of the Gym environment with universe
 
-
 import cv2
-import gym
+import gymnasium as gym
 import numpy as np
-from gym.spaces.box import Box
-from gym import wrappers
-
-
-# Taken from https://github.com/openai/universe-starter-agent
+from gymnasium.spaces import Box
 
 
 def create_atari_env(env_id, video=False):
-    env = gym.make(env_id)
+    env = gym.make(env_id, render_mode="rgb_array")
     if video:
-        env = wrappers.Monitor(env, 'test', force=True)
+        env = gym.wrappers.RecordVideo(env, 'test')
     env = MyAtariRescale42x42(env)
     env = MyNormalizedEnv(env)
     return env
@@ -30,7 +25,6 @@ def _process_frame42(frame):
     frame = frame.mean(2)
     frame = frame.astype(np.float32)
     frame *= (1.0 / 255.0)
-    #frame = np.reshape(frame, [1, 42, 42])
     return frame
 
 
@@ -38,10 +32,10 @@ class MyAtariRescale42x42(gym.ObservationWrapper):
 
     def __init__(self, env=None):
         super(MyAtariRescale42x42, self).__init__(env)
-        self.observation_space = Box(0.0, 1.0, [1, 42, 42])
+        self.observation_space = Box(0.0, 1.0, shape=(1, 42, 42), dtype=np.float32)
 
-    def _observation(self, observation):
-    	return _process_frame42(observation)
+    def observation(self, observation):
+        return _process_frame42(observation)
 
 
 class MyNormalizedEnv(gym.ObservationWrapper):
@@ -53,7 +47,7 @@ class MyNormalizedEnv(gym.ObservationWrapper):
         self.alpha = 0.9999
         self.num_steps = 0
 
-    def _observation(self, observation):
+    def observation(self, observation):
         self.num_steps += 1
         self.state_mean = self.state_mean * self.alpha + \
             observation.mean() * (1 - self.alpha)
