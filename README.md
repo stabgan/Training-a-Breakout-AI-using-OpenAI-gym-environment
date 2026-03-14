@@ -45,6 +45,12 @@ Breakout/Code_With_Comments/
 ### Install dependencies
 
 ```bash
+pip install -r requirements.txt
+```
+
+Or manually:
+
+```bash
 pip install torch gymnasium gymnasium[atari] gymnasium[accept-rom-license] opencv-python numpy
 ```
 
@@ -72,7 +78,6 @@ The test agent evaluates periodically and saves gameplay videos to `test/`.
 - **CPU-only**: A3C uses shared memory multiprocessing, which doesn't map cleanly to GPU. Training is CPU-bound and can be slow.
 - **Atari ROM license**: You need to accept the Atari ROM license (`gymnasium[accept-rom-license]`) for the environment to work.
 - **Long training time**: Expect several hours to see meaningful improvement. The test agent sleeps 60s between evaluations.
-- **`ensure_shared_grads`**: The current implementation returns early if any shared param already has a gradient, which may skip gradient sharing for some parameters in edge cases.
 
 ## References
 

@@ -1,0 +1,5 @@
+torch>=2.0
+gymnasium[atari]>=0.29
+gymnasium[accept-rom-license]
+opencv-python>=4.0
+numpy>=1.24

@@ -15,8 +15,8 @@ class SharedAdam(optim.Adam):
             for p in group['params']:
                 state = self.state[p]
                 state['step'] = torch.zeros(1)
-                state['exp_avg'] = p.data.new().resize_as_(p.data).zero_()
-                state['exp_avg_sq'] = p.data.new().resize_as_(p.data).zero_()
+                state['exp_avg'] = torch.zeros_like(p.data)
+                state['exp_avg_sq'] = torch.zeros_like(p.data)
 
     def share_memory(self):
         for group in self.param_groups:

@@ -25,21 +25,23 @@ class Params():
 
 
 # Main run
-os.environ['OMP_NUM_THREADS'] = '1'
-params = Params()
-torch.manual_seed(params.seed)
-env = create_atari_env(params.env_name)
-shared_model = ActorCritic(env.observation_space.shape[0], env.action_space)
-shared_model.share_memory()
-optimizer = my_optim.SharedAdam(shared_model.parameters(), lr=params.lr)
-optimizer.share_memory()
-processes = []
-p = mp.Process(target=test, args=(params.num_processes, params, shared_model))
-p.start()
-processes.append(p)
-for rank in range(0, params.num_processes):
-    p = mp.Process(target=train, args=(rank, params, shared_model, optimizer))
+if __name__ == '__main__':
+    mp.set_start_method('forkserver', force=True)
+    os.environ['OMP_NUM_THREADS'] = '1'
+    params = Params()
+    torch.manual_seed(params.seed)
+    env = create_atari_env(params.env_name)
+    shared_model = ActorCritic(env.observation_space.shape[0], env.action_space)
+    shared_model.share_memory()
+    optimizer = my_optim.SharedAdam(shared_model.parameters(), lr=params.lr)
+    optimizer.share_memory()
+    processes = []
+    p = mp.Process(target=test, args=(params.num_processes, params, shared_model))
     p.start()
     processes.append(p)
-for p in processes:
-    p.join()
+    for rank in range(0, params.num_processes):
+        p = mp.Process(target=train, args=(rank, params, shared_model, optimizer))
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()

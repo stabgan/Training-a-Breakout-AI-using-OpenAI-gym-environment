@@ -9,7 +9,12 @@ from gymnasium.spaces import Box
 def create_atari_env(env_id, video=False):
     env = gym.make(env_id, render_mode="rgb_array")
     if video:
-        env = gym.wrappers.RecordVideo(env, 'test')
+        env = gym.wrappers.RecordVideo(
+            env,
+            video_folder='test',
+            episode_trigger=lambda ep: True,
+            disable_logger=True,
+        )
     env = MyAtariRescale42x42(env)
     env = MyNormalizedEnv(env)
     return env
