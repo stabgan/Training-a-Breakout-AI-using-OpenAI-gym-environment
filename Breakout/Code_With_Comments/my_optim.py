@@ -4,31 +4,32 @@ import math
 import torch
 import torch.optim as optim
 
+
 # Implementing the Adam optimizer with shared states
 
-class SharedAdam(optim.Adam): # object that inherits from optim.Adam
+class SharedAdam(optim.Adam):
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
-        super(SharedAdam, self).__init__(params, lr, betas, eps, weight_decay) # inheriting from the tools of optim.Adam
-        for group in self.param_groups: # self.param_groups contains all the attributes of the optimizer, including the parameters to optimize (the weights of the network) contained in self.param_groups['params']
-            for p in group['params']: # for each tensor p of weights to optimize
-                state = self.state[p] # at the beginning, self.state is an empty dictionary so state = {} and self.state = {p:{}} = {p: state}
-                state['step'] = torch.zeros(1) # counting the steps: state = {'step' : tensor([0])}
-                state['exp_avg'] = p.data.new().resize_as_(p.data).zero_() # the update of the adam optimizer is based on an exponential moving average of the gradient (moment 1)
-                state['exp_avg_sq'] = p.data.new().resize_as_(p.data).zero_() # the update of the adam optimizer is also based on an exponential moving average of the squared of the gradient (moment 2)
+        super(SharedAdam, self).__init__(params, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
+        for group in self.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                state['step'] = torch.zeros(1)
+                state['exp_avg'] = p.data.new().resize_as_(p.data).zero_()
+                state['exp_avg_sq'] = p.data.new().resize_as_(p.data).zero_()
 
-    # Sharing the memory
     def share_memory(self):
         for group in self.param_groups:
             for p in group['params']:
                 state = self.state[p]
-                state['step'].share_memory_() # tensor.share_memory_() acts a little bit like tensor.cuda()
-                state['exp_avg'].share_memory_() # tensor.share_memory_() acts a little bit like tensor.cuda()
-                state['exp_avg_sq'].share_memory_() # tensor.share_memory_() acts a little bit like tensor.cuda()
+                state['step'].share_memory_()
+                state['exp_avg'].share_memory_()
+                state['exp_avg_sq'].share_memory_()
 
-    # Performing a single optimization step of the Adam algorithm (see algorithm 1 in https://arxiv.org/pdf/1412.6980.pdf)
-    def step(self):
+    def step(self, closure=None):
         loss = None
+        if closure is not None:
+            loss = closure()
         for group in self.param_groups:
             for p in group['params']:
                 if p.grad is None:
@@ -39,12 +40,12 @@ class SharedAdam(optim.Adam): # object that inherits from optim.Adam
                 beta1, beta2 = group['betas']
                 state['step'] += 1
                 if group['weight_decay'] != 0:
-                    grad = grad.add(group['weight_decay'], p.data)
-                exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+                    grad = grad.add(p.data, alpha=group['weight_decay'])
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group['eps'])
-                bias_correction1 = 1 - beta1 ** state['step'][0]
-                bias_correction2 = 1 - beta2 ** state['step'][0]
+                bias_correction1 = 1 - beta1 ** state['step'].item()
+                bias_correction2 = 1 - beta2 ** state['step'].item()
                 step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
-                p.data.addcdiv_(-step_size, exp_avg, denom)
+                p.data.addcdiv_(exp_avg, denom, value=-step_size)
         return loss
