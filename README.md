@@ -1,78 +1,93 @@
-# 🎮 Breakout AI — A3C with LSTM
+# Breakout AI — A3C with LSTM
 
-Train an AI agent to play Atari Breakout using Asynchronous Advantage Actor-Critic (A3C) with PyTorch and OpenAI Gym.
+Training an AI agent to play Atari Breakout using Asynchronous Advantage Actor-Critic (A3C) and LSTM, built with PyTorch and OpenAI Gym.
 
-## What It Does
+## Overview
 
-Implements the [A3C algorithm](https://arxiv.org/abs/1602.01783) to train a reinforcement learning agent on Breakout. Multiple agents explore in parallel across CPU cores, sharing gradients with a central model for fast, stable learning.
+This project implements the A3C reinforcement learning algorithm from [DeepMind's seminal paper](https://arxiv.org/abs/1602.01783) to train an agent that learns to play Breakout. Instead of a single agent training for weeks, A3C runs multiple agents in parallel — each exploring independently and sharing gradients with a central model.
 
 ## Architecture
 
-```
-Input (42×42 grayscale frames)
-  → 4× Conv2d (32 filters, 3×3, stride 2, ELU)
-  → LSTMCell (288 → 256 hidden)
-  ├→ Critic head → V(s)       (state value)
-  └→ Actor head  → π(a|s)     (action probabilities)
-```
+The model (`model.py`) combines:
 
-Training uses Generalized Advantage Estimation (GAE) with entropy regularization. A custom `SharedAdam` optimizer enables cross-process gradient sharing.
+- **4 convolutional layers** (32 filters each, 3×3 kernels, stride 2) with ELU activations — processes 42×42 grayscale frames
+- **LSTM cell** (256 hidden units) — captures temporal dependencies across frames
+- **Actor head** — outputs action probabilities (policy π)
+- **Critic head** — outputs state value V(s)
 
-| Hyperparameter | Value |
+Training uses Generalized Advantage Estimation (GAE) with entropy regularization to encourage exploration.
+
+### Hyperparameters
+
+| Parameter | Value |
 |---|---|
 | Learning rate | 0.0001 |
 | Discount (γ) | 0.99 |
 | GAE (τ) | 1.0 |
-| Workers | 16 |
-| Steps/update | 20 |
-| Gradient clip | 40 |
+| Parallel workers | 16 |
+| Steps per update | 20 |
+| Max episode length | 10,000 |
+| Gradient clipping | 40 |
 
 ## Project Structure
 
 ```
 Breakout/Code_With_Comments/
-├── main.py        # Entry point — spawns 16 training + 1 test process
-├── model.py       # ActorCritic network (CNN + LSTM)
+├── main.py        # Entry point — spawns training and test processes
+├── model.py       # ActorCritic network (CNN + LSTM + actor/critic heads)
 ├── train.py       # A3C training loop with GAE
-├── test.py        # Greedy evaluation agent, records video
-├── envs.py        # Gym wrappers (frame resize, normalization)
-├── my_optim.py    # SharedAdam optimizer
-└── test/          # Recorded gameplay videos
+├── test.py        # Evaluation agent (greedy policy, records video)
+├── envs.py        # Gym environment wrappers (frame preprocessing)
+├── my_optim.py    # SharedAdam optimizer for cross-process gradient sharing
+└── test/          # Recorded gameplay videos (mp4)
 ```
 
-## Getting Started
+## Dependencies
 
-### Install dependencies
+- Python 2.7+ or 3.x
+- PyTorch (0.3.x or 0.4.x era — see deprecation notes below)
+- OpenAI Gym with Atari environments
+- OpenCV (`cv2`)
+- NumPy
 
 ```bash
-pip install torch gymnasium gymnasium[atari] gymnasium[accept-rom-license] opencv-python numpy
+pip install torch gym gym[atari] opencv-python numpy
 ```
 
-### Run training
+## Usage
 
 ```bash
 cd Breakout/Code_With_Comments
 python main.py
 ```
 
-The test agent evaluates periodically and saves gameplay videos to `test/`.
+This spawns 16 training workers + 1 test worker. The test agent periodically evaluates the shared model and saves gameplay videos to `test/`.
 
-## 🛠 Tech Stack
+## Known Issues and Deprecations
 
-| | Technology |
-|---|---|
-| 🧠 | **PyTorch** — neural network and autograd |
-| 🕹️ | **Gymnasium** — Atari environment |
-| 👁️ | **OpenCV** — frame preprocessing |
-| 🔢 | **NumPy** — numerical operations |
-| ⚡ | **Python multiprocessing** — parallel A3C workers |
+This code was written circa 2018 against older versions of PyTorch and Gym. Running it on modern versions will require fixes:
 
-## ⚠️ Known Issues
+**PyTorch deprecations:**
 
-- **CPU-only**: A3C uses shared memory multiprocessing, which doesn't map cleanly to GPU. Training is CPU-bound and can be slow.
-- **Atari ROM license**: You need to accept the Atari ROM license (`gymnasium[accept-rom-license]`) for the environment to work.
-- **Long training time**: Expect several hours to see meaningful improvement. The test agent sleeps 60s between evaluations.
-- **`ensure_shared_grads`**: The current implementation returns early if any shared param already has a gradient, which may skip gradient sharing for some parameters in edge cases.
+- `Variable` is deprecated since PyTorch 0.4. Tensors now track gradients natively — all `Variable(...)` wrapping can be removed.
+- `volatile=True` (used in `test.py`) is removed. Use `torch.no_grad()` context manager instead.
+- `F.softmax(action_values)` and `F.log_softmax(action_values)` require an explicit `dim` argument in modern PyTorch (e.g., `dim=1`).
+- `prob.multinomial()` should be `prob.multinomial(num_samples=1)`.
+- `torch.nn.utils.clip_grad_norm` is renamed to `clip_grad_norm_` (with trailing underscore).
+- `exp_avg.mul_(beta1).add_(1 - beta1, grad)` — the alpha/value two-arg form of `add_`, `addcmul_`, and `addcdiv_` is removed. Use `exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)` style instead.
+
+**OpenAI Gym deprecations:**
+
+- `Breakout-v0` is removed in recent Gym/Gymnasium versions. Use `BreakoutNoFrameskip-v4` or `ALE/Breakout-v5`.
+- `env.seed()` is deprecated. Pass `seed` to `gym.make()` instead.
+- `gym.wrappers.Monitor` is removed. Use `gym.wrappers.RecordVideo`.
+- The `_observation` method in custom wrappers should be renamed to `observation`.
+- `Box(0.0, 1.0, [1, 42, 42])` — the shape argument should use `shape=` keyword and be a tuple.
+
+**Functional bugs:**
+
+- In `test.py`, `action[0, 0]` will fail if `action` is 1D. The `.data.numpy()` call on the multinomial result may need reshaping depending on PyTorch version.
+- `ensure_shared_grads` in `train.py` returns early if *any* shared param already has a gradient, which may skip gradient sharing for remaining parameters.
 
 ## References
 
@@ -81,4 +96,4 @@ The test agent evaluates periodically and saves gameplay videos to `test/`.
 
 ## License
 
-MIT
+MIT — Kaustabh Ganguly, 2018
